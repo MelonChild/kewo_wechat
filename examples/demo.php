@@ -51,4 +51,63 @@ use Kewo\wechat;
         } else {
             //返回获取失败，重新发起请求
         }
+
+
+
+        //异步通知
+        /**
+     * 微信异步通知
+     *
+     * @param Request $request
+     * @return Response
+     * @author MelonChild
+     */
+    public function notify()
+    {
+        $key = config('common.wepay.key');
+        $notifyInstance = kewoWechat::notifyInstance($key);
+        
+        //异步通知
+        $notifyInstance->notify(array($this, 'NotifyCallBack'));
+    }
+
+    //回调处理函数 当所有验证成功后回调
+    public function NotifyCallBack($result)
+	{
+        //异步通知有返回值
+        if($result&&$result['return_code']=='SUCCESS'&&$result['result_code']=='SUCCESS') {
+            //创建订单
+            $prepay = Prepay::where('code',$result['out_trade_no'])->first();
+            $order = Order::firstOrCreate(['number'=>$result['out_trade_no']]); 
+            if($order){
+                $orderData['paid_at'] = time();
+                $orderData['status'] = 1;
+                
+                $orderData['trade_type'] = $result['trade_type'];
+                $orderData['tranid'] = $result['transaction_id'];
+                $orderData['app_number'] = $result['attach'];
+                $orderData['fee_type'] = $result['fee_type'];
+                $orderData['real_fee'] = $result['total_fee'];
+                $orderData['usernum'] = $result['openid'];
+
+                $order->update($orderData);
+
+                //异步通知子应用订单状态，加入通知队列
+                if($prepay){
+                    $orderData['app'] = $prepay['app'];
+                    $orderData['body'] = $prepay['body'];
+                    $orderData['created_at'] = $prepay['created_at'];
+                    $orderData['total_fee'] = $prepay['total_fee'];
+                    $orderData['product_id'] = $prepay['product_id'];
+                    $orderData['detail'] = $prepay['detail'];
+
+                    $notify = Notify::firstOrCreate(['number'=>$result['out_trade_no']]); 
+                    $notify -> update(['notify_url'=>$prepay['notify_url'],'redirect_url'=>$prepay['redirect_url']]);
+                }
+                $order->update($orderData);
+                $prepay && $prepay->delete();
+            }
+        }
+    }
+
 ?> 

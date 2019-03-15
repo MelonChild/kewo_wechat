@@ -27,7 +27,6 @@ class Wechat
     private $proxyPort = 0; 
     private $sslCertPath; //证书路径,注意应该填写绝对路径（仅退款、撤销订单时需要，可登录商户平台下载，
     private $sslKeyPath; 
-    private $redirectUrl; 
 
     public function __construct($app='')
     {
@@ -73,13 +72,31 @@ class Wechat
      * 创建js授权环境
      * 
      */
-    static function jsInstance($appid,$appsecret,$redirectUrl='')
+    static function jsInstance($appid,$appsecret)
     {
         $obj = new Wechat;
         $obj->appid = $appid;
         $obj->appsecret = $appsecret;
-        $obj->redirectUrl = $redirectUrl;
         $obj->otherObj = new JsApiPay;
+
+        return $obj;
+    }
+        
+    /**
+     * 创建回调环境
+     * 
+     * @param appid 公众账号ID
+     * @param mchid 商户号
+     *
+     * @param AppId 应用ID
+     */
+    static function notifyInstance($paykey,$app=1)
+    {
+        $obj = new Wechat;
+        $obj->paykey = $paykey;
+        $obj->app = $app;
+
+        $obj->otherObj = new WxPayApi;
 
         return $obj;
     }
@@ -131,10 +148,6 @@ class Wechat
 	{
 		return $this->appsecret;
     }
-    public function GetRedirectUrl()
-	{
-		return $this->redirectUrl;
-	}
 	public function GetMerchantId()
 	{
 		return $this->mchid;
@@ -287,16 +300,39 @@ class Wechat
         $key = $this->paykey;
         $result = $jsApiPay->GetJsApiParameters($value ,$key);
         return $result;
+    }
+    
+            
+    /**
+	 * 
+     * 异步通知
+	 * @param 
+	 */
+	public function notify($callback)
+	{
+        if ($this->paykey == "") {
+            throw new WxPayException('商户key为空',1003);
+        }
+        $key = $this->paykey;
+        $result = $this->otherObj->notify($key);
+
+        return call_user_func($callback, $result);
 	}
-        
+    
+    
+    
     /**
 	 * 
      * 用户授权获取 openid unionid
 	 * @param 
 	 */
-	public function getOpenId($value='',$size=12,$margin=2)
-	{
-        return \QRcode::png($value, false, 'L', $size, $margin);
+	public function getOpenId()
+	{ 
+        $configs["appid"] = $this->appid;
+		$configs["secret"] = $this->appsecret;
+        $openId = $this->otherObj->GetOpenid($configs);
+
+        return $openId;
 	}
 
     /**

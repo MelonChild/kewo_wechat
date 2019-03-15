@@ -30,7 +30,7 @@ class WxPayApi
 	 * 格式化参数格式化成url参数
 	 * 
 	 */
-	public function ToUrlParams($datas)
+	public static function ToUrlParams($datas)
 	{
 		$buff = "";
 		foreach ($datas as $k => $v)
@@ -49,10 +49,10 @@ class WxPayApi
      * 设置签名
 	 * 
      */
-	public function setSign($datas,$key,$type="MD5"){
+	public static function setSign($datas,$key,$type="MD5"){
 		//签名步骤一：按字典序排序参数
 		ksort($datas);
-		$string = $this->ToUrlParams($datas);
+		$string = self::ToUrlParams($datas);
 		//签名步骤二：在string后加入KEY
 		$string = $string . "&key=".$key;
 		//签名步骤三：MD5加密或者HMAC-SHA256
@@ -71,7 +71,7 @@ class WxPayApi
 	 * 输出xml字符
 	 * @throws WxPayException
 	**/
-	public function ToXml($datas)
+	public static function ToXml($datas)
 	{
 		if(!is_array($datas) || count($datas) <= 0)
 		{
@@ -174,7 +174,7 @@ class WxPayApi
      * @param string $xml
      * @throws WxPayException
      */
-	public function FromXml($xml)
+	public static function FromXml($xml)
 	{	
 		if(!$xml){
 			throw new WxPayException("xml数据异常！",5704);
@@ -192,9 +192,9 @@ class WxPayApi
      * @param string $xml
      * @throws WxPayException
      */
-	public function resultInit($xml,$key)
+	public static function resultInit($xml,$key)
 	{	
-		$values = $this->FromXml($xml);
+		$values = self::FromXml($xml);
 		//失败则直接返回失败
 		if($values['return_code'] != 'SUCCESS') {
 			foreach ($values as $key => $value) {
@@ -206,7 +206,7 @@ class WxPayApi
 			}
 			return $values;
 		}
-		$this->resultCheckSign($values,$key);
+		self::resultCheckSign($values,$key);
         return $values;
 	}
 
@@ -215,13 +215,13 @@ class WxPayApi
 	 * @param string $key  支付key
 	 * 检测签名
 	 */
-	public function resultCheckSign($values,$key)
+	public static function resultCheckSign($values,$key)
 	{
-		if(!$this->IsSignSet($values)){
+		if(!self::IsSignSet($values)){
 			throw new WxPayException("签名错误！",5706);
 		}
 		
-		$sign = $this->MakeSign($values,$key);
+		$sign = self::MakeSign($values,$key);
 		if($values['sign'] == $sign){
 			//签名正确
 			return true;
@@ -233,7 +233,7 @@ class WxPayApi
 	 * 判断签名，详见签名生成算法是否存在
 	 * @return true 或 false
 	 */
-	public function IsSignSet($values)
+	public static function IsSignSet($values)
 	{
 		return array_key_exists('sign', $values);
 	}
@@ -244,11 +244,11 @@ class WxPayApi
 	 * @param string $key  支付key
 	 * @return 签名，本函数不覆盖sign成员变量，如要设置签名需要调用SetSign方法赋值
 	 */
-	public function MakeSign($values,$key)
+	public static function MakeSign($values,$key)
 	{
 		//签名步骤一：按字典序排序参数
 		ksort($values);
-		$string = $this->ToUrlParams($values);
+		$string = self::ToUrlParams($values);
 		//签名步骤二：在string后加入KEY
 		$string = $string . "&key=".$key;
 		//签名步骤三：MD5加密或者HMAC-SHA256
@@ -308,6 +308,46 @@ class WxPayApi
 		$result['pre_nonce_str'] = $input['nonce_str']; 
 		return $result;
 	}
+
+	/**
+ 	 * 
+ 	 * 支付结果通用通知
+ 	 * @param function $config
+ 	 */
+	  public static function notify($key,$needSign = false)
+	  {
+		$result = false;
+		$returnData['return_code'] = "FAIL";
+		$returnData['return_msg'] = "FAIL";
+
+		$xml = file_get_contents("php://input");
+		if (!$xml) {
+			# 如果没有数据，直接返回失败
+			return $result;
+		}
+
+		try {
+			//获取通知的数据
+			//如果返回成功则验证签名
+			
+			$data = self::resultInit($xml,$key);
+			$result = $data;
+			$returnData['return_code'] = "SUCCESS";
+			$returnData['return_msg'] = "OK";
+		} catch (WxPayException $e){
+			return false;
+		}
+		
+		//返回
+		if($needSign == true && $returnData['return_code']== "SUCCESS") {
+			$returnData['sign'] = self::SetSign($returnData,$key);
+		}
+
+		$xml = self::ToXml($returnData);
+		self::replyNotify($xml);
+
+		return $result;
+	  }
 	
 	/**
 	 * 
@@ -614,33 +654,7 @@ class WxPayApi
 		return $result;
 	}
 	
- 	/**
- 	 * 
- 	 * 支付结果通用通知
- 	 * @param function $callback
- 	 * 直接回调函数使用方法: notify(you_function);
- 	 * 回调类成员函数方法:notify(array($this, you_function));
- 	 * $callback  原型为：function function_name($data){}
- 	 */
-	public static function notify($config, $callback, &$msg)
-	{
-		if (!isset($GLOBALS['HTTP_RAW_POST_DATA'])) {
-			# 如果没有数据，直接返回失败
-			return false;
-		}
-
-		//如果返回成功则验证签名
-		try {
-			//获取通知的数据
-			$xml = $GLOBALS['HTTP_RAW_POST_DATA'];
-			$result = WxPayNotifyResults::Init($config, $xml);
-		} catch (WxPayException $e){
-			$msg = $e->errorMessage();
-			return false;
-		}
-		
-		return call_user_func($callback, $result);
-	}
+ 	
 	
 	/**
 	 * 

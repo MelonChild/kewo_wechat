@@ -38,20 +38,19 @@ class JsApiPay
 	 * 
 	 * @return 用户的openid
 	 */
-	public function GetOpenid($obj)
+	public function GetOpenid($configs)
 	{
 		//通过code获得openid
 		if (!isset($_GET['code'])){
 			//触发微信返回code码
-			$redirectUrl = $obj->GetRedirectUrl();
-			$baseUrl = $redirectUrl?$redirectUrl:urlencode('http://'.$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI'].$_SERVER['QUERY_STRING']);
-			$url = $this->_CreateOauthUrlForCode($obj,$baseUrl);
+			$baseUrl = urlencode('http://'.$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI'].$_SERVER['QUERY_STRING']);
+			$url = $this->_CreateOauthUrlForCode($configs,$baseUrl);
 			Header("Location: $url");
 			exit();
 		} else {
 			//获取code码，以获取openid
 		    $code = $_GET['code'];
-			$openid = $this->getOpenidFromMp($code);
+			$openid = $this->getOpenidFromMp($configs,$code);
 			return $openid;
 		}
 	}
@@ -73,10 +72,11 @@ class JsApiPay
 			throw new WxPayException("js设置参数错误",1005);
 		}
 
-		$jsapiData['appid'] = $UnifiedOrderResult["appid"];
+		$jsapiData['appId'] = $UnifiedOrderResult["appid"];
 		$jsapiData['timeStamp'] = time();
 		$jsapiData['nonceStr'] = $UnifiedOrderResult["pre_nonce_str"];
 		$jsapiData['package'] = "prepay_id=" . $UnifiedOrderResult['prepay_id'];
+		$jsapiData['signType'] = "MD5";
 
 		//设置签名
 		$config = new WxPayApi();
@@ -92,19 +92,17 @@ class JsApiPay
 	 * 
 	 * @return openid
 	 */
-	public function GetOpenidFromMp($code)
+	public function GetOpenidFromMp($configs,$code)
 	{
-		$url = $this->__CreateOauthUrlForOpenid($code);
+		$url = $this->__CreateOauthUrlForOpenid($configs,$code);
 
 		//初始化curl
 		$ch = curl_init();
 		$curlVersion = curl_version();
-		$config = new WxPayConfig();
-		$ua = "WXPaySDK/3.0.9 (".PHP_OS.") PHP/".PHP_VERSION." CURL/".$curlVersion['version']." "
-		.$config->GetMerchantId();
+		$ua = "WXPaySDK/3.0.9 (".PHP_OS.") PHP/".PHP_VERSION." CURL/".$curlVersion['version']." ";
 
 		//设置超时
-		curl_setopt($ch, CURLOPT_TIMEOUT, $this->curl_timeout);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 120);
 		curl_setopt($ch, CURLOPT_URL, $url);
 		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER,FALSE);
 		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST,FALSE);
@@ -112,21 +110,44 @@ class JsApiPay
 		curl_setopt($ch, CURLOPT_HEADER, FALSE);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
 
-		$proxyHost = "0.0.0.0";
-		$proxyPort = 0;
-		$config->GetProxy($proxyHost, $proxyPort);
-		if($proxyHost != "0.0.0.0" && $proxyPort != 0){
-			curl_setopt($ch,CURLOPT_PROXY, $proxyHost);
-			curl_setopt($ch,CURLOPT_PROXYPORT, $proxyPort);
-		}
+		// $proxyHost = "0.0.0.0";
+		// $proxyPort = 0;
+		// $config->GetProxy($proxyHost, $proxyPort);
+		// if($proxyHost != "0.0.0.0" && $proxyPort != 0){
+		// 	curl_setopt($ch,CURLOPT_PROXY, $proxyHost);
+		// 	curl_setopt($ch,CURLOPT_PROXYPORT, $proxyPort);
+		// }
 		//运行curl，结果以jason形式返回
 		$res = curl_exec($ch);
 		curl_close($ch);
 		//取出openid
 		$data = json_decode($res,true);
-		$this->data = $data;
-		$openid = $data['openid'];
-		return $openid;
+
+		//根据openid+accesstoken 获取 unionID
+		if(isset($data['access_token'])){
+			//获取用户信息
+			$wechatUrl = "https://api.weixin.qq.com/sns/userinfo?access_token=".$data['access_token']."&openid=".$data['openid']."&lang=zh_CN";
+			$ch = curl_init();
+
+			//设置超时
+			curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+			curl_setopt($ch, CURLOPT_URL, $url);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER,FALSE);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST,FALSE);
+			curl_setopt($ch, CURLOPT_USERAGENT, $ua);
+			curl_setopt($ch, CURLOPT_HEADER, FALSE);
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+
+			$res = curl_exec($ch);
+			curl_close($ch);
+			//取出openid
+			$result = json_decode($res,true);
+			if(isset($result['unionid'])){
+				return $result;
+			}
+		}
+		//dd(123,$data);
+		return $data;
 	}
 	
 	/**
@@ -190,10 +211,9 @@ class JsApiPay
 	 * 
 	 * @return 返回构造好的url
 	 */
-	private function _CreateOauthUrlForCode($obj,$redirectUrl)
+	private function _CreateOauthUrlForCode($configs,$redirectUrl)
 	{
-		$config = new WxPayConfig();
-		$urlObj["appid"] = $obj->GetAppId();
+		$urlObj["appid"] = $configs['appid'];
 		$urlObj["redirect_uri"] = "$redirectUrl";
 		$urlObj["response_type"] = "code";
 		$urlObj["scope"] = "snsapi_userinfo";
@@ -209,11 +229,10 @@ class JsApiPay
 	 * 
 	 * @return 请求的url
 	 */
-	private function __CreateOauthUrlForOpenid($code)
+	private function __CreateOauthUrlForOpenid($configs,$code)
 	{
-		$config = new WxPayConfig();
-		$urlObj["appid"] = $config->GetAppId();
-		$urlObj["secret"] = $config->GetAppSecret();
+		$urlObj["appid"] = $configs['appid'];
+		$urlObj["secret"] = $configs['secret'];
 		$urlObj["code"] = $code;
 		$urlObj["grant_type"] = "authorization_code";
 		$bizString = $this->ToUrlParams($urlObj);
