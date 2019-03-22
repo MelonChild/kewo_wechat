@@ -1,5 +1,5 @@
 <?php
-namespace Kewo\lib;
+namespace Kewo\Wechat\lib;
 
 use Exception;
 /**

@@ -1,8 +1,8 @@
 <?php
-namespace Kewo\lib;
+namespace Kewo\Wechat\lib;
 // require_once "WxPay.Exception.php";
 // require_once "WxPay.Config.Interface.php";
-use Kewo\lib\WxPayException;
+use Kewo\Wechat\lib\WxPayException;
 
 /**
  * 

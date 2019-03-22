@@ -3,12 +3,12 @@
  *  Copyright (c) 2014 The CCP project authors. All Rights Reserved.
  *
  */
-namespace Kewo;
+namespace Kewo\Wechat;
 require_once "lib/phpqrcode.php";
 
-use Kewo\lib\WxPayApi;
-use Kewo\lib\WxPayException;
-use Kewo\lib\JsApiPay;
+use Kewo\Wechat\lib\WxPayApi;
+use Kewo\Wechat\lib\WxPayException;
+use Kewo\Wechat\lib\JsApiPay;
 
 class Wechat
 {

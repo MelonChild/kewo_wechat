@@ -1,7 +1,7 @@
 <?php
-namespace Kewo\lib;
-use Kewo\lib\WxPayApi;
-use Kewo\lib\WxPayException;
+namespace Kewo\Wechat\lib;
+use Kewo\Wechat\lib\WxPayApi;
+use Kewo\Wechat\lib\WxPayException;
 /**
  * 
  * JSAPI支付实现类
